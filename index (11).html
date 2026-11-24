@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>things</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body { background: #fff; color: #000; font-family: Helvetica, Arial, sans-serif; }
+  .site { position: relative; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; }
+  .heading { position: absolute; z-index: 30; right: 4.3%; top: 4.5%; text-align: right; line-height: 1; pointer-events: none; }
+  h1 { margin: 0; font-size: clamp(36px, 7.1vw, 68px); font-weight: 400; letter-spacing: -1.5px; }
+  .subtitle { margin-top: 2px; font-size: clamp(10px, 1.45vw, 13px); }
+  .tile {
+    position: absolute; display: flex; align-items: center; justify-content: center;
+    min-width: 0; min-height: 0; background: #888; color: #fff;
+    text-decoration: none; font-size: clamp(13px, 1.7vw, 22px); font-weight: 400;
+    will-change: left, top, width, height; z-index: 1;
+    transition: background-color 180ms ease;
+  }
+  .tile:hover, .tile:focus-visible { background: #666; z-index: 10; }
+  .tile.selected { background: #444; z-index: 20; }
+  .tile:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
+  .number { pointer-events: none; }
+  @media (max-aspect-ratio: 5/4) {
+    .heading { right: 3%; top: 3%; }
+    h1 { font-size: clamp(30px, 9vw, 60px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tile { transition: none; }
+  }
+</style>
+</head>
+<body>
+<main class="site" aria-label="things, a collection of things">
+  <header class="heading"><h1>things</h1><div class="subtitle">a collection of things</div></header>
+  <a class="tile" href="projects/project-01/" aria-label="Project 1"></a>
+  <a class="tile" href="projects/threefold/" aria-label="threefold"></a>
+  <a class="tile" href="projects/project-03/" aria-label="Project 3"></a>
+  <a class="tile" href="projects/project-04/" aria-label="Project 4"></a>
+  <a class="tile" href="projects/project-05/" aria-label="Project 5"></a>
+  <a class="tile" href="projects/project-06/" aria-label="Project 6"></a>
+  <a class="tile" href="projects/project-07/" aria-label="Project 7"></a>
+  <a class="tile" href="projects/project-08/" aria-label="Project 8"></a>
+  <a class="tile" href="projects/project-09/" aria-label="Project 9"></a>
+  <a class="tile" href="projects/project-10/" aria-label="Project 10"></a>
+  <a class="tile" href="projects/project-11/" aria-label="Project 11"></a>
+  <a class="tile" href="projects/project-12/" aria-label="Project 12"></a>
+  <a class="tile" href="projects/project-13/" aria-label="Project 13"></a>
+  <a class="tile" href="projects/project-14/" aria-label="Project 14"></a>
+</main>
+<script>
+(() => {
+  const site = document.querySelector('.site');
+  const tiles = [...document.querySelectorAll('.tile')];
+  const columns = 24;
+  const rows = 12;
+  const gap = 10;
+  const padding = 12;
+
+  // [column, row, column span, row span], using 1-based grid coordinates.
+  const layout = [
+    [1, 2, 3, 3], [4, 1, 4, 4], [1, 5, 7, 4],
+    [1, 9, 4, 2], [1, 11, 4, 2], [5, 9, 3, 3],
+    [5, 12, 3, 1], [8, 4, 4, 4], [12, 5, 3, 3],
+    [8, 8, 5, 4], [13, 8, 3, 4], [16, 10, 2, 2],
+    [8, 12, 4, 1], [12, 12, 3, 1]
+  ];
+
+  let hovered = -1;
+  const hoverInfluence = Array(tiles.length).fill(0);
+  let previousTime = 0;
+
+  tiles.forEach((tile, index) => {
+    tile.innerHTML = index === 1 ? `<span class="number">threefold</span>` : `<span class="number">${index + 1}</span>`;
+    tile.addEventListener('mouseenter', () => { hovered = index; });
+    tile.addEventListener('mouseleave', () => { hovered = -1; });
+    tile.addEventListener('focus', () => { hovered = index; });
+    tile.addEventListener('blur', () => { hovered = -1; });
+  });
+
+  function makeWeights(count, time, phase, axis) {
+    const base = Array.from({ length: count }, (_, i) =>
+      1 + 0.20 * Math.sin(time * 0.27 + i * 0.59 + phase) +
+          0.075 * Math.sin(time * 0.15 + i * 1.31 + phase * 0.7)
+    );
+    // Blend each tile's hover influence independently. This prevents a rapid
+    // move between tiles from snapping the expansion target to a new card.
+    const boosted = base.map((weight, track) => {
+      let influence = 0;
+      layout.forEach(([col, row, spanX, spanY], tileIndex) => {
+        const start = axis === 'x' ? col - 1 : row - 1;
+        const span = axis === 'x' ? spanX : spanY;
+        if (track >= start && track < start + span) influence += hoverInfluence[tileIndex];
+      });
+      // Moderate enlargement, capped even if influences briefly overlap.
+      const multiplier = 1 + Math.min(influence, 1) * 1.25;
+      return weight * multiplier;
+    });
+    const baseTotal = base.reduce((sum, weight) => sum + weight, 0);
+    const boostedTotal = boosted.reduce((sum, weight) => sum + weight, 0);
+    return boosted.map(weight => weight * baseTotal / boostedTotal);
+  }
+
+  function pixelTracks(weights, available) {
+    const total = weights.reduce((sum, value) => sum + value, 0);
+    return weights.map(value => available * value / total);
+  }
+
+  function cumulative(values) {
+    const result = [0];
+    for (const value of values) result.push(result[result.length - 1] + value);
+    return result;
+  }
+
+  function animate(timestamp) {
+    const elapsed = previousTime ? Math.min((timestamp - previousTime) / 1000, 0.05) : 0;
+    previousTime = timestamp;
+    const time = timestamp / 1000;
+    const easing = 1 - Math.exp(-5.0 * elapsed);
+    hoverInfluence.forEach((value, index) => {
+      const target = index === hovered ? 1 : 0;
+      hoverInfluence[index] += (target - value) * easing;
+    });
+
+    const rect = site.getBoundingClientRect();
+    const contentWidth = Math.max(1, rect.width - padding * 2 - gap * (columns - 1));
+    const contentHeight = Math.max(1, rect.height - padding * 2 - gap * (rows - 1));
+
+    const colWeights = makeWeights(columns, time, 0.2, 'x');
+    const rowWeights = makeWeights(rows, time, 1.1, 'y');
+    const colPixels = pixelTracks(colWeights, contentWidth);
+    const rowPixels = pixelTracks(rowWeights, contentHeight);
+    const x = cumulative(colPixels);
+    const y = cumulative(rowPixels);
+
+    tiles.forEach((tile, index) => {
+      const [col, row, spanX, spanY] = layout[index];
+      const c0 = col - 1, r0 = row - 1;
+      const left = padding + x[c0] + gap * c0;
+      const top = padding + y[r0] + gap * r0;
+      const right = padding + x[c0 + spanX] + gap * (c0 + spanX - 1);
+      const bottom = padding + y[r0 + spanY] + gap * (r0 + spanY - 1);
+      tile.style.left = `${left}px`;
+      tile.style.top = `${top}px`;
+      tile.style.width = `${right - left}px`;
+      tile.style.height = `${bottom - top}px`;
+    });
+
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
+  window.addEventListener('resize', () => { previousTime = 0; });
+})();
+</script>
+</body>
+</html>
